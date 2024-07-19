@@ -7,17 +7,13 @@
       "es5"
     ],
     "esModuleInterop": true,
-    "strict": true,
+    "strict": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "removeComments": false,
-    "composite": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "resolveJsonModule": true,
+   
     "outDir": "lib",
-    "rootDir": "src"
+    "rootDir": "./src"
   },
   "include": [
     "src/*.ts",

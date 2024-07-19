@@ -4,9 +4,7 @@
   "description": "A command-line utility and module to turn postgres tables into JSON Schemas",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
-  "bin": {
-    "pgtables2jsonschema": "./lib/cli.js"
-  },
+  
   "scripts": {
     "build:compile": "tsc -b --verbose",
     "build": "npm-run-all build:compile",
@@ -57,10 +55,12 @@
   },
   "dependencies": {
     "commander": "^11.1.0",
+    "json-schema": "^0.4.0",
     "jsonfile": "^6.1.0",
     "lodash": "^4.17.21",
     "mkdirp": "^3.0.1",
     "pg-structure": "^7.15.3",
-    "prompts": "^2.4.2"
+    "prompts": "^2.4.2",
+    "tsconfig-paths": "^4.2.0"
   }
 }

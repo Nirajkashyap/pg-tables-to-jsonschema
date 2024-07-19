@@ -255,6 +255,34 @@ export class SchemaConverter {
       if (column.notNull && !column.default) {
         (jsonSchema.required as string[]).push(columnName);
       }
+      // handle regular ref
+      if (column.foreignKeys.length > 0) {
+        const foreignKey = column.foreignKeys[0]; // Assuming one foreign key per column
+        // console.log(foreignKey.referencedTable);
+        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['foreignTable'] = foreignKey.referencedTable.schema.name + '.'+ foreignKey.referencedTable.name;
+      }
+      // handle array of string ref
+      if (column.comment && (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "array") {
+        const foreignKey = column.comment;
+        // console.log(foreignKey.referencedTable);
+        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
+      }
+      // handle object ref
+      if (column.comment && (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "object") {
+        try{
+          console.log(column.comment)
+          const parsedComment = JSON.parse(JSON.parse(column.comment));
+          
+          console.log(parsedComment);
+          (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName] = parsedComment;
+        }catch(e){
+           console.log("could not parse comment", column.comment, e)
+        }
+        
+        // console.log(foreignKey.referencedTable);
+        //(jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
+      }
+
     }
 
     // Write to file if requested
