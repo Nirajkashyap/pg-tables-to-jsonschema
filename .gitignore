@@ -15,3 +15,4 @@ tsconfig.tsbuildinfo
 # Some test files I use
 /*-config.json
 test/dump
+output
