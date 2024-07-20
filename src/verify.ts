@@ -46,23 +46,49 @@ function addForeignTableSchema(jsonSchemas: any[]): any[] {
   jsonSchemas.forEach((schema) => {
     if (schema.$id) {
       const schemaKey = extractSchemaKeyFromId(schema.$id);
-      // console.log(schemaKey);
       schemaMap.set(schemaKey, schema);
     }
   });
 
-  // Iterate over the schemas and add foreignTableSchema when foreignTable is found
-  return jsonSchemas.map((schema) => {
-    if (schema.properties) {
-      Object.keys(schema.properties).forEach((key) => {
-        const property = schema.properties[key];
-        if (property.foreignTable) {
-          const foreignSchema = schemaMap.get(property.foreignTable);
-          if (foreignSchema) {
-            property.foreignTableSchema = foreignSchema;
+  // Helper function to recursively process properties
+  function processProperties(properties: any) {
+    Object.keys(properties).forEach((key) => {
+      const property = properties[key];
+
+      // If foreignTable is found, add foreignTableSchema
+      if (property.foreignTable) {
+        const foreignSchema = schemaMap.get(property.foreignTable);
+        if (foreignSchema) {
+          property.foreignTableSchema = foreignSchema;
+        }
+      }
+
+      // Recursively process nested properties if they exist
+      if (property.properties) {
+        processProperties(property.properties);
+      }
+
+      // Recursively process items if it's an array
+      if (property.items) {
+        if (Array.isArray(property.items)) {
+          property.items.forEach((item: any) => {
+            if (item.properties) {
+              processProperties(item.properties);
+            }
+          });
+        } else {
+          if (property.items.properties) {
+            processProperties(property.items.properties);
           }
         }
-      });
+      }
+    });
+  }
+
+  // Iterate over the schemas and process properties
+  return jsonSchemas.map((schema) => {
+    if (schema.properties) {
+      processProperties(schema.properties);
     }
     return schema;
   });
