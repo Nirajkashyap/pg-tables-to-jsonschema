@@ -46,7 +46,11 @@ function addForeignTableSchema(jsonSchemas: any[]): any[] {
   jsonSchemas.forEach((schema) => {
     if (schema.$id) {
       const schemaKey = extractSchemaKeyFromId(schema.$id);
-      schemaMap.set(schemaKey, schema);
+      if (schemaMap.has(schemaKey)) {
+        console.error(`Duplicate schema key detected: ${schemaKey}`);
+      } else {
+        schemaMap.set(schemaKey, schema);
+      }
     }
   });
 
@@ -75,10 +79,22 @@ function addForeignTableSchema(jsonSchemas: any[]): any[] {
             if (item.properties) {
               processProperties(item.properties);
             }
+            if (item.foreignTable) {
+              const foreignSchema = schemaMap.get(item.foreignTable);
+              if (foreignSchema) {
+                item.foreignTableSchema = foreignSchema;
+              }
+            }
           });
         } else {
           if (property.items.properties) {
             processProperties(property.items.properties);
+          }
+          if (property.items.foreignTable) {
+            const foreignSchema = schemaMap.get(property.items.foreignTable);
+            if (foreignSchema) {
+              property.items.foreignTableSchema = foreignSchema;
+            }
           }
         }
       }
