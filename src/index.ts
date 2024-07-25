@@ -246,7 +246,7 @@ export class SchemaConverter {
 
       (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName] = {
         ...this.convertColumnType({ column }) as Record<string, unknown>,
-        description: `${column.comment || defaultDescription}. Database type: ${columnType}. Default value: ${column.default}`,
+        // description: `${column.comment || defaultDescription}. Database type: ${columnType}. Default value: ${column.default}`,
         maxLength: column.length,
       };
 
@@ -268,7 +268,8 @@ export class SchemaConverter {
         (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
       }
       // handle object ref
-      if (column.comment && (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "object") {
+      if ((jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "object") {
+        if(column.comment){
         try{
           console.log(column.comment)
           const parsedComment = JSON.parse(JSON.parse(column.comment));
@@ -281,6 +282,10 @@ export class SchemaConverter {
         
         // console.log(foreignKey.referencedTable);
         //(jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
+        }else{
+          delete (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['properties'];
+          (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['additionalProperties'] = { "type" : "string"};
+        }
       }
 
     }

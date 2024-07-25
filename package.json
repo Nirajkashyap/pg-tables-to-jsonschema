@@ -4,7 +4,6 @@
   "description": "A command-line utility and module to turn postgres tables into JSON Schemas",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
-  
   "scripts": {
     "build:compile": "tsc -b --verbose",
     "build": "npm-run-all build:compile",
