@@ -1,10 +1,20 @@
 import { promises as fsPromises } from 'fs';
 import { join, dirname, basename } from 'path';
 import { SchemaConverter } from './index';
-import { IConfiguration }  from './config'; // Assuming you have defined IConfiguration somewhere
+import { IConfiguration } from './config'; // Assuming you have defined IConfiguration somewhere
+import { JSONSchema7 } from 'json-schema';
 
-import { JSONSchema7, JSONSchema7Definition } from 'json-schema';
-import { AnyKindOfDictionary } from 'lodash';
+interface DependencyNode {
+  table: string;
+  dependencies: DependencyNode[];
+}
+
+interface DependencyMap {
+  [key: string]: {
+    dependencies: string[];
+    dependents: string[];
+  };
+}
 
 const config: IConfiguration = {
   pg: {
@@ -15,7 +25,7 @@ const config: IConfiguration = {
     password: 'postgres',
   },
   input: {
-    schemas: ['public','auth'],
+    schemas: ['public', 'auth'],
     include: [],
     exclude: [],
   },
@@ -25,7 +35,7 @@ const config: IConfiguration = {
     defaultDescription: ' ',
     // additionalProperties: true,
     baseUrl: 'http://example.com/schemas',
-    unwrap: false
+    unwrap: false,
   },
 };
 
@@ -39,8 +49,8 @@ function extractSchemaKeyFromId(id: string): string {
   return schemaKey;
 }
 
-function addForeignTableSchema(jsonSchemas: any[]): any[] {
-  const schemaMap = new Map<string, any>();
+function addForeignTableSchema(jsonSchemas: JSONSchema7[]): JSONSchema7[] {
+  const schemaMap = new Map<string, JSONSchema7>();
 
   // Create a map of $id to JSON schema for quick lookup
   jsonSchemas.forEach((schema) => {
@@ -55,7 +65,7 @@ function addForeignTableSchema(jsonSchemas: any[]): any[] {
   });
 
   // Helper function to recursively process properties
-  function processProperties(properties: any) {
+  function processProperties(properties: { [key: string]: any }) {
     Object.keys(properties).forEach((key) => {
       const property = properties[key];
 
@@ -110,43 +120,97 @@ function addForeignTableSchema(jsonSchemas: any[]): any[] {
   });
 }
 
-
 async function writeSchemaFiles(schemas: JSONSchema7[], baseOutputDir: string): Promise<void> {
-    // console.log(JSON.stringify(schemas));
-    for (const schema of schemas) {
-      const schemaId = schema.$id;
-      if (!schemaId) {
-        console.error('Schema is missing $id property');
-        continue;
-      }
-  
-      // Extract the last folder path from the $id property
-      const url = new URL(schemaId);
-      const schemaPath = url.pathname;
-      const schemaDirArray = dirname(schemaPath).split("/");
-      const schemaDir = schemaDirArray.at(-1);
-      const schemaName = basename(schemaPath, '.json');
-      const outputDir = join(baseOutputDir, schemaDir);
-  
-      // Ensure the output directory exists
-      await fsPromises.mkdir(outputDir, { recursive: true });
-  
-      // Create TypeScript content
-      const tsContent = `export const ${schemaName} = ${JSON.stringify(schema, null, 2)};\n`;
-  
-      // Construct the file path and write the content to the file
-      const fileName = `${schemaName}.ts`;
-      const filePath = join(outputDir, fileName);
-  
-      await fsPromises.writeFile(filePath, tsContent, 'utf8');
-      console.log(`Schema file written: ${filePath}`);
+  for (const schema of schemas) {
+    const schemaId = schema.$id;
+    if (!schemaId) {
+      console.error('Schema is missing $id property');
+      continue;
     }
+
+    // Extract the last folder path from the $id property
+    const url = new URL(schemaId);
+    const schemaPath = url.pathname;
+    const schemaDirArray = dirname(schemaPath).split('/');
+    const schemaDir = schemaDirArray.at(-1);
+    const schemaName = basename(schemaPath, '.json');
+    const outputDir = join(baseOutputDir, schemaDir!);
+
+    // Ensure the output directory exists
+    await fsPromises.mkdir(outputDir, { recursive: true });
+
+    // Create TypeScript content
+    const tsContent = `export const ${schemaName} = ${JSON.stringify(schema, null, 2)};\n`;
+
+    // Construct the file path and write the content to the file
+    const fileName = `${schemaName}.ts`;
+    const filePath = join(outputDir, fileName);
+
+    await fsPromises.writeFile(filePath, tsContent, 'utf8');
+    console.log(`Schema file written: ${filePath}`);
   }
+}
+
+function buildDependencyTree(schemas: JSONSchema7[]): { [key: string]: DependencyNode } {
+  const dependencyMap: DependencyMap = {};
+
+  schemas.forEach(schema => {
+    const schemaTitle = schema.title as string;
+    if (!dependencyMap[schemaTitle]) {
+      dependencyMap[schemaTitle] = { dependencies: [], dependents: [] };
+    }
+
+    function extractDependencies(properties: { [key: string]: any }) {
+      Object.values(properties).forEach(property => {
+        if (property.foreignTable) {
+          const foreignTable = property.foreignTable as string;
+          if (!dependencyMap[foreignTable]) {
+            dependencyMap[foreignTable] = { dependencies: [], dependents: [] };
+          }
+          dependencyMap[schemaTitle].dependencies.push(foreignTable);
+          dependencyMap[foreignTable].dependents.push(schemaTitle);
+        }
+
+        if (property.type === 'object' && property.properties) {
+          extractDependencies(property.properties);
+        } else if (property.type === 'array' && property.items && property.items.type === 'object' && property.items.properties) {
+          extractDependencies(property.items.properties);
+        }
+      });
+    }
+
+    extractDependencies(schema.properties as { [key: string]: any });
+  });
+
+  function buildTree(table: string, visited = new Set<string>()): DependencyNode | null {
+    if (visited.has(table)) return null;
+    visited.add(table);
+    const node: DependencyNode = { table, dependencies: [] };
+    dependencyMap[table].dependencies.forEach(dep => {
+      const childNode = buildTree(dep, visited);
+      if (childNode) {
+        node.dependencies.push(childNode);
+      }
+    });
+    return node;
+  }
+
+  const tree: { [key: string]: DependencyNode } = {};
+  Object.keys(dependencyMap).forEach(table => {
+    if (!dependencyMap[table].dependents.length) {
+      tree[table] = buildTree(table) as DependencyNode;
+    }
+  });
+
+  return tree;
+}
 
 // Example usage
 (async () => {
   const outputSchemas: JSONSchema7[] = await new SchemaConverter(config).convert();
-  const updatedoutputSchemas = addForeignTableSchema(outputSchemas);
-  
-  await writeSchemaFiles(updatedoutputSchemas, config.output.outDir);
+  // console.log(JSON.stringify(outputSchemas));
+  const dependencyTree = buildDependencyTree(outputSchemas);
+  console.log(JSON.stringify(dependencyTree, null, 2));
+  const updatedOutputSchemas = addForeignTableSchema(outputSchemas);
+  await writeSchemaFiles(updatedOutputSchemas, config.output.outDir);
 })();
