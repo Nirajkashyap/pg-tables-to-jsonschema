@@ -2,7 +2,7 @@ import { promises as fsPromises } from 'fs';
 import { join, dirname, basename } from 'path';
 import { SchemaConverter } from './index';
 import { IConfiguration } from './config'; // Assuming you have defined IConfiguration somewhere
-import { JSONSchema7 } from 'json-schema';
+import { JSONSchema7, JSONSchema7Definition } from 'json-schema';
 
 interface DependencyNode {
   table: string;
@@ -151,66 +151,111 @@ async function writeSchemaFiles(schemas: JSONSchema7[], baseOutputDir: string): 
   }
 }
 
-function buildDependencyTree(schemas: JSONSchema7[]): { [key: string]: DependencyNode } {
-  const dependencyMap: DependencyMap = {};
 
-  schemas.forEach(schema => {
-    const schemaTitle = schema.title as string;
-    if (!dependencyMap[schemaTitle]) {
-      dependencyMap[schemaTitle] = { dependencies: [], dependents: [] };
-    }
+// Function to perform topological sort
+function topologicalSort(schemasArray: any[]): string[] {
+  const schemasMap: Record<string, any> = {};
+  const adjList: Map<string, Set<string>> = new Map();
+  const inDegree: Map<string, number> = new Map();
+  const stack: string[] = [];
+  const visited: Set<string> = new Set();
+  const onStack: Set<string> = new Set();
 
-    function extractDependencies(properties: { [key: string]: any }) {
-      Object.values(properties).forEach(property => {
-        if (property.foreignTable) {
-          const foreignTable = property.foreignTable as string;
-          if (!dependencyMap[foreignTable]) {
-            dependencyMap[foreignTable] = { dependencies: [], dependents: [] };
-          }
-          dependencyMap[schemaTitle].dependencies.push(foreignTable);
-          dependencyMap[foreignTable].dependents.push(schemaTitle);
-        }
-
-        if (property.type === 'object' && property.properties) {
-          extractDependencies(property.properties);
-        } else if (property.type === 'array' && property.items && property.items.type === 'object' && property.items.properties) {
-          extractDependencies(property.items.properties);
-        }
-      });
-    }
-
-    extractDependencies(schema.properties as { [key: string]: any });
+  // Build the schema map and initialize in-degree and adjacency list
+  schemasArray.forEach(schema => {
+    const title = schema.title!;
+    schemasMap[title] = schema;
+    inDegree.set(title, 0);
+    adjList.set(title, new Set());
   });
 
-  function buildTree(table: string, visited = new Set<string>()): DependencyNode | null {
-    if (visited.has(table)) return null;
-    visited.add(table);
-    const node: DependencyNode = { table, dependencies: [] };
-    dependencyMap[table].dependencies.forEach(dep => {
-      const childNode = buildTree(dep, visited);
-      if (childNode) {
-        node.dependencies.push(childNode);
+  // Build the graph
+  schemasArray.forEach(schema => {
+    const title = schema.title!;
+    const foreignTables = findForeignTables(schema);
+    foreignTables.forEach(foreignTable => {
+      if (schemasMap[foreignTable]) {
+        if (!adjList.has(foreignTable)) {
+          adjList.set(foreignTable, new Set());
+        }
+        adjList.get(foreignTable)!.add(title);
+        inDegree.set(title, (inDegree.get(title) || 0) + 1);
       }
     });
-    return node;
+  });
+
+  console.log("Adjacency List:", Array.from(adjList.entries()));
+  console.log("In-Degree Map:", Array.from(inDegree.entries()));
+
+  function detectCycle(node: string): boolean {
+    if (onStack.has(node)) return true;
+    if (visited.has(node)) return false;
+    
+    visited.add(node);
+    onStack.add(node);
+    
+    const neighbors : any = adjList.get(node) || new Set();
+    for (const neighbor of neighbors) {
+      if (detectCycle(neighbor)) {
+        return true;
+      }
+    }
+    
+    onStack.delete(node);
+    stack.push(node);
+    return false;
   }
 
-  const tree: { [key: string]: DependencyNode } = {};
-  Object.keys(dependencyMap).forEach(table => {
-    if (!dependencyMap[table].dependents.length) {
-      tree[table] = buildTree(table) as DependencyNode;
+  // Detect cycles and perform topological sort
+  Object.keys(schemasMap).forEach(node => {
+    if (!visited.has(node)) {
+      if (detectCycle(node)) {
+        throw new Error(`Cycle detected involving node: ${node}`);
+      }
     }
   });
 
-  return tree;
+  // The stack contains nodes in reverse topological order
+  return stack.reverse();
+}
+
+// Function to find all foreign table references
+function findForeignTables(schema: any): string[] {
+  const foreignTables: string[] = [];
+  
+  if (schema.properties) {
+    Object.values(schema.properties).forEach((prop:any) => {
+      if (typeof prop === 'object') {
+        // Check for foreignTable in nested properties
+        if (prop.foreignTable) {
+          foreignTables.push(prop.foreignTable);
+        }
+        // Recursively check for foreignTable in nested objects
+        if (prop.type === 'object' && prop.properties) {
+          foreignTables.push(...findForeignTables(prop as any));
+        }
+        // Check for foreignTable in arrays of objects
+        if (prop.type === 'array' && prop.items && typeof prop.items === 'object') {
+          foreignTables.push(...findForeignTables(prop.items as any));
+        }
+      }
+    });
+  }
+  
+  return foreignTables;
 }
 
 // Example usage
 (async () => {
   const outputSchemas: JSONSchema7[] = await new SchemaConverter(config).convert();
   // console.log(JSON.stringify(outputSchemas));
-  const dependencyTree = buildDependencyTree(outputSchemas);
-  console.log(JSON.stringify(dependencyTree, null, 2));
+ 
+  // const dependencyTree = buildDependencyTree(outputSchemas);
+  // console.log(JSON.stringify(dependencyTree, null, 2));
+  // const resolvedOrder = resolveDependencies(dependencyTree);
+  // console.log('Resolved Dependency Order:', resolvedOrder);
   const updatedOutputSchemas = addForeignTableSchema(outputSchemas);
   await writeSchemaFiles(updatedOutputSchemas, config.output.outDir);
+  const sortedSchemas = topologicalSort(outputSchemas);
+  console.log("Topologically sorted schemas:", JSON.stringify(sortedSchemas));
 })();
