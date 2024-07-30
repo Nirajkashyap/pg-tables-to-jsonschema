@@ -256,6 +256,10 @@ export class SchemaConverter {
       if (column.notNull && !column.default) {
         (jsonSchema.required as string[]).push(columnName);
       }
+      // hdanle auto Generated
+      if(column.isGenerated){
+        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['isGenerated'] = column.isGenerated;
+      }
       // handle regular ref
       if (column.foreignKeys.length > 0) {
         const foreignKey = column.foreignKeys[0]; // Assuming one foreign key per column
