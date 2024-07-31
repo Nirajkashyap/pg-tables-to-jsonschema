@@ -3,7 +3,7 @@ import { join, dirname, basename } from 'path';
 import { Client } from 'pg';
 import { SchemaConverter } from './index';
 import { IConfiguration } from './config'; // Assuming you have defined IConfiguration somewhere
-import { JSONSchema7, JSONSchema7Definition } from 'json-schema';
+import { JSONSchema7 } from 'json-schema';
 import { faker } from '@faker-js/faker';
 
 const config: IConfiguration = {
@@ -55,7 +55,7 @@ async function fetchDataFromTable(client: Client, tableName: string, index: numb
 }
 
 // Function to generate data for a property
-function generatePropertyData(property: JSONSchema7): any {
+async function generatePropertyData(property: JSONSchema7, client: Client, index: number, fakeDataMap: Record<string, any[]>): Promise<any> {
   if (property.enum) {
     // Return a random value from the enum array
     return faker.helpers.arrayElement(property.enum);
@@ -72,9 +72,16 @@ function generatePropertyData(property: JSONSchema7): any {
   } else if (property.type === 'boolean') {
     return faker.datatype.boolean();
   } else if (property.type === 'array' && property.items) {
-    return [generatePropertyData(property.items as JSONSchema7)];
+    // Generate data for each item in the array
+    const itemsSchema = property.items as JSONSchema7;
+    const arrayData = [];
+    for (let i = 0; i < 5; i++) { // Adjust the array size as needed
+      arrayData.push(await generatePropertyData(itemsSchema, client, index, fakeDataMap));
+    }
+    return arrayData;
   } else if (property.type === 'object' && property.properties) {
-    return generateFakeData(property as JSONSchema7, {}, new Client(config.pg), 1); // Pass 0 as default index for nested objects
+    // Generate data for nested object
+    return await generateFakeData(property as JSONSchema7, fakeDataMap, client, index);
   } else {
     return null;
   }
@@ -113,7 +120,7 @@ async function generateFakeData(schema: JSONSchema7, fakeDataMap: Record<string,
           }
         }
       } else {
-        data[key] = generatePropertyData(property);
+        data[key] = await generatePropertyData(property, client, index, fakeDataMap);
       }
     }
   }
@@ -131,43 +138,66 @@ async function insertFakeData(fakeDataMap: Record<string, any[]>): Promise<void>
     for (const [tableName, dataArray] of Object.entries(fakeDataMap)) {
       for (const data of dataArray) {
         const columns = Object.keys(data).join(', ');
-        const values = Object.values(data);
+        const values = Object.values(data).map(value => {
+          if (Array.isArray(value)) {
+            if (value.every(item => typeof item === 'string' || typeof item === 'number')) {
+              // Convert array of strings or numbers to PostgreSQL array literal
+              return `{${value.map(item => JSON.stringify(item)).join(',')}}`;
+            } else if (value.every(item => typeof item === 'object' && item !== null)) {
+              // Convert array of objects to JSONB formatted string
+              return JSON.stringify(value);
+            }
+          } else if (typeof value === 'object' && value !== null) {
+            // Convert object to JSON string
+            return JSON.stringify(value);
+          }
+          return value;
+        });
         const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
         const query = `INSERT INTO ${tableName} (${columns}) VALUES (${placeholders})`;
-        await client.query(query, values);
-        console.log(`Inserted data into ${tableName}`);
+        
+        // Log the query and values for debugging
+        // console.log('Executing query:', query);
+        // console.log('With values:', values);
+
+        try {
+          await client.query(query, values);
+          console.log(`Inserted data into ${tableName}`);
+        } catch (err) {
+          console.error(`Error inserting data into ${tableName}:`, err);
+          console.log('Executing query:', query);
+        // console.log('With values:', values);
+        }
       }
     }
   } catch (err) {
-    console.error('Error inserting data:', err);
+    console.error('Error inserting fake data:', err);
   } finally {
     await client.end();
   }
 }
 
-// Function to add foreign table schema
+// Function to add foreign table schemas to the schemas
 function addForeignTableSchema(jsonSchemas: JSONSchema7[]): JSONSchema7[] {
   const schemaMap = new Map<string, JSONSchema7>();
 
-  // Create a map of $id to JSON schema for quick lookup
+  // Create a map of schema titles to schemas
   jsonSchemas.forEach((schema) => {
-    if (schema.$id) {
-      const schemaKey = extractSchemaKeyFromId(schema.$id);
-      if (schemaMap.has(schemaKey)) {
-        console.error(`Duplicate schema key detected: ${schemaKey}`);
-      } else {
-        schemaMap.set(schemaKey, schema);
-      }
+    const schemaId = schema.$id;
+    if (schemaId) {
+      const schemaKey = extractSchemaKeyFromId(schemaId);
+      schemaMap.set(schemaKey, schema);
     }
   });
 
-  // Helper function to recursively process properties
   function processProperties(properties: { [key: string]: any }) {
     Object.keys(properties).forEach((key) => {
       const property = properties[key];
+      if (property.properties) {
+        processProperties(property.properties);
+      }
 
-      // If foreignTable is found, add foreignTableSchema
       if (property.foreignTable) {
         const foreignSchema = schemaMap.get(property.foreignTable);
         if (foreignSchema) {
@@ -175,12 +205,6 @@ function addForeignTableSchema(jsonSchemas: JSONSchema7[]): JSONSchema7[] {
         }
       }
 
-      // Recursively process nested properties if they exist
-      if (property.properties) {
-        processProperties(property.properties);
-      }
-
-      // Recursively process items if it's an array
       if (property.items) {
         if (Array.isArray(property.items)) {
           property.items.forEach((item: any) => {
