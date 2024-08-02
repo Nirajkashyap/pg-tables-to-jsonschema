@@ -239,73 +239,69 @@ export class SchemaConverter {
       required: [],
       type: 'object',
     };
-
+  
     const columns = entity.columns;
     for (const column of columns) {
       const columnName = column.name;
       const columnType = column.type.name;
-
-      (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName] = {
+  
+      (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName] = {
         ...this.convertColumnType({ column }) as Record<string, unknown>,
         // description: `${column.comment || defaultDescription}. Database type: ${columnType}. Default value: ${column.default}`,
         maxLength: column.length,
       };
-
+  
       // Check if the column is required
-      //
       if (column.notNull && !column.default) {
         (jsonSchema.required as string[]).push(columnName);
       }
-      // hdanle auto Generated
-      if(column.isGenerated){
-        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['isGenerated'] = column.isGenerated;
+  
+      // Handle auto-generated columns
+      if (column.isGenerated) {
+        (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['isGenerated'] = column.isGenerated;
       }
-      // handle regular ref
+  
+      // Handle regular foreign key references
       if (column.foreignKeys.length > 0) {
         const foreignKey = column.foreignKeys[0]; // Assuming one foreign key per column
-        // console.log(foreignKey.referencedTable);
-        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['foreignTable'] = foreignKey.referencedTable.schema.name + '.'+ foreignKey.referencedTable.name;
+        (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['foreignTable'] =
+          foreignKey.referencedTable.schema.name + '.' + foreignKey.referencedTable.name;
       }
-      // handle array of string ref
-      if (column.comment && (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "array") {
+  
+      // Handle array of string references
+      if (column.comment && (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['type'] === 'array') {
         const foreignKey = column.comment;
-        // console.log(foreignKey.referencedTable);
-        (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
+        (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['foreignTable'] = foreignKey;
       }
-      // handle object ref
-      if ((jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['type'] === "object") {
-        if(column.comment){
-        try{
-          console.log(column.comment)
-          const parsedComment = JSON.parse(JSON.parse(column.comment));
-          
-          console.log(parsedComment);
-          (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName] = parsedComment;
-        }catch(e){
-           console.log("could not parse comment", column.comment, e)
-        }
-        
-        // console.log(foreignKey.referencedTable);
-        //(jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['items']['foreignTable'] = foreignKey
-        }else{
-          delete (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['properties'];
-          (jsonSchema.properties as {[key: string]: JSONSchema7Definition})[columnName]['additionalProperties'] = { "type" : "string"};
+  
+      // Handle object references
+      if ((jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['type'] === 'object') {
+        if (column.comment) {
+          try {
+            console.log(column.comment);
+            const parsedComment = JSON.parse(JSON.parse(column.comment));
+            console.log(parsedComment);
+            (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName] = parsedComment;
+          } catch (e) {
+            console.log('Could not parse comment', column.comment, e);
+          }
+        } else {
+          delete (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['properties'];
+          (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['additionalProperties'] = { type: 'string' };
         }
       }
-
     }
-
+  
     // Write to file if requested
-    //
     if (outputFolder) {
       const folderName = join(outputFolder, schemaName);
       await mkdirp(folderName);
       const fileName = join(folderName, `${entityName}.json`);
       await jsonfile.writeFile(fileName, jsonSchema, { spaces: indentSpaces });
     }
-
+  
     return jsonSchema;
-  }
+  }  
 
   /**
    * Helper method to convert a postgresql column type to a json-schema type
