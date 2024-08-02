@@ -60,7 +60,7 @@ async function generatePropertyData(property: JSONSchema7, client: Client, index
     // Return a random value from the enum array
     return faker.helpers.arrayElement(property.enum);
   } else if (property.format === 'uuid') {
-    return faker.datatype.uuid();
+    return faker.string.uuid();
   } else if (property.format === 'date-time') {
     return faker.date.recent().toISOString();
   } else if (property.type === 'string') {
