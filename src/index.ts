@@ -106,6 +106,7 @@ export class SchemaConverter {
       //
       for (const table of schema.tables) {
         const tableName = table.name;
+        // table.checkConstraints
 
         // Check if the entity is included and/or excluded
         //
@@ -291,7 +292,16 @@ export class SchemaConverter {
         }
       }
     }
-  
+    const tempTable : any  = entity.schema.get(`${entityName}`);
+    const allcheckconstraints = tempTable.checkConstraints.map((constraint: any) => {
+        console.log(`  Constraint: ${constraint.name}`);
+        console.log(`    Expression: ${constraint.expression || 'N/A'}`);
+        return { constraintName : constraint.name , constraintExpression : constraint.expression}
+    });
+    if(allcheckconstraints.length > 0 ){
+      jsonSchema['checkConstraints'] = allcheckconstraints
+    }
+
     // Write to file if requested
     if (outputFolder) {
       const folderName = join(outputFolder, schemaName);
