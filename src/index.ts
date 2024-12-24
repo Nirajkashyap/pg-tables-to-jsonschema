@@ -271,8 +271,26 @@ export class SchemaConverter {
   
       // Handle array of string references
       if (column.comment && (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['type'] === 'array') {
-        const foreignKey = column.comment;
-        (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['foreignTable'] = foreignKey;
+        
+        if((jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['type'] === 'object'){
+          
+          try {
+            console.log(column.comment);
+            const parsedComment = JSON.parse(JSON.parse(column.comment));
+            console.log(parsedComment);
+            (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items'] = parsedComment;
+          } catch (e) {
+            console.error('Could not parse comment', column.comment, e);
+            (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['additionalProperties'] = { type: 'string' };
+
+          }
+            
+        }else if((jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['type'] === 'string'){
+          const foreignKey = column.comment;
+          (jsonSchema.properties as { [key: string]: JSONSchema7Definition })[columnName]['items']['foreignTable'] = foreignKey;
+        }else{
+          console.log('column type is array but sub type is not defined', column);
+        }
       }
   
       // Handle object references
