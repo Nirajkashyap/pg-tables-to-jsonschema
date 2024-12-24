@@ -142,8 +142,8 @@ async function insertFakeData(fakeDataMap: Record<string, any[]>): Promise<void>
               // Convert array of strings or numbers to PostgreSQL array literal
               return `{${value.map(item => JSON.stringify(item)).join(',')}}`;
             } else if (value.every(item => typeof item === 'object' && item !== null)) {
-              // Convert array of objects to JSONB formatted string
-              return JSON.stringify(value);
+              // Convert array of objects to JSONB[] formatted string
+              return value.map(item => JSON.stringify(item));
             }
           } else if (typeof value === 'object' && value !== null) {
             // Convert object to JSON string
@@ -165,7 +165,7 @@ async function insertFakeData(fakeDataMap: Record<string, any[]>): Promise<void>
         } catch (err) {
           console.error(`Error inserting data into ${tableName}:`, err);
           console.log('Executing query:', query);
-        // console.log('With values:', values);
+          console.log('With values:', values);
         }
       }
     }
@@ -372,7 +372,7 @@ async function main() {
   
   const sortedSchemas = topologicalSort(updatedOutputSchemas);
 
-  // console.log("Topologically sorted schemas:", JSON.stringify(sortedSchemas));
+  console.log("Topologically sorted schemas:", JSON.stringify(sortedSchemas));
 
   const fakeDataMap: Record<string, any[]> = {};
   const client = new Client(config.pg);
@@ -386,7 +386,7 @@ async function main() {
     if (schema) {
       if (!schema.title.startsWith('auth.')) {
         const fakeDataArray = [];
-        for (let i = 0; i < 10; i++) { // Generating 10 fake data entries for each schema
+        for (let i = 0; i < 5; i++) { // Generating 10 fake data entries for each schema
           fakeDataArray.push(await generateFakeData(schema, fakeDataMap, client, i));
         }
         fakeDataMap[schemaTitle] = fakeDataArray;
@@ -394,7 +394,7 @@ async function main() {
     }
   }
 
-  console.log("Generated fake data:", JSON.stringify(fakeDataMap, null, 2));
+  // console.log("Generated fake data:", JSON.stringify(fakeDataMap, null, 2));
 
   await insertFakeData(fakeDataMap);
   await client.end();
