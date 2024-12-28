@@ -30,7 +30,7 @@ const config: IConfiguration = {
 async function cleanDatabase(client: Client, tableNames: string[]): Promise<void> {
   try {
     for (const tableName of tableNames) {
-      if (!tableName.startsWith('auth.')) {
+      if (!tableName.startsWith('auth.') && !tableName.endsWith('api_auth')) {
         await client.query(`DELETE FROM ${tableName}`);
         console.log(`Cleared data from ${tableName}`);
       }
@@ -384,7 +384,7 @@ async function main() {
   for (const schemaTitle of sortedSchemas) {
     const schema = updatedOutputSchemas.find(s => s.title === schemaTitle);
     if (schema) {
-      if (!schema.title.startsWith('auth.')) {
+      if (!schema.title.startsWith('auth.') && !schema.title.endsWith('api_auth')) {
         const fakeDataArray = [];
         for (let i = 0; i < 5; i++) { // Generating 10 fake data entries for each schema
           fakeDataArray.push(await generateFakeData(schema, fakeDataMap, client, i));
