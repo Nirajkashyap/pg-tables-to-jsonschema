@@ -132,12 +132,26 @@ async function writeSchemaFiles(schemas: JSONSchema7[], baseOutputDir: string): 
   }
 }
 
+async  function writeSingeleSchemaFile(schemas: JSONSchema7[], baseOutputDir: string): Promise<void> {
+  // filter out the schema with title starting without "auth" 
+  const filteredSchemas = schemas.filter(schema => !schema.title?.startsWith('auth'));
+  // write the schema to a single file
+  const tsContent = `export const schemas = ${JSON.stringify(filteredSchemas, null, 2)};\n`;
+  // Construct the file path and write the content to the file
+  const filePath = join(baseOutputDir, 'schemas.ts');
+  await fsPromises.writeFile(filePath, tsContent, 'utf8');
+  console.log(`wrote ${filePath}`);
+}
+  
+
 
 
 // Main function
 async function main() {
   const outputSchemas: JSONSchema7[] = await new SchemaConverter(config).convert();
   const updatedOutputSchemas = addForeignTableSchema(outputSchemas);
+  console.log(updatedOutputSchemas);
+  await writeSingeleSchemaFile(outputSchemas, config.output.outDir);
   await writeSchemaFiles(updatedOutputSchemas, config.output.outDir);
 
 }
